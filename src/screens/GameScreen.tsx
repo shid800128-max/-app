@@ -181,22 +181,23 @@ export default function GameScreen({ navigation, route }: Props) {
       {/* Prompt */}
       {currentSymbol && !isMatchDone && !isMineDone && (
         <View style={styles.promptArea}>
-          {isMatchStage ? (
-            <View style={styles.promptRow}>
-              <Text style={[MC.textTitle, { color: Colors.textSecondary }]}>找到 </Text>
-              <View style={[styles.promptBlock, { backgroundColor: currentSymbol.blockColor }]}>
-                <Text style={[styles.promptSymbol, pixelShadow]}>{currentSymbol.symbol}</Text>
-              </View>
+          <View style={styles.promptRow}>
+            <Text style={[MC.textTitle, { color: Colors.textSecondary }]}>
+              {isMatchStage ? '找到 ' : '挖出 '}
+            </Text>
+            <View style={[styles.promptBlock, { backgroundColor: currentSymbol.blockColor }]}>
+              <Text style={[styles.promptSymbol, pixelShadow]}>{currentSymbol.symbol}</Text>
+            </View>
+            {isMatchStage && (
               <Text style={[MC.textTitle, { color: Colors.textSecondary }]}> ！</Text>
-            </View>
-          ) : (
-            <View style={styles.promptRow}>
-              <Text style={[MC.textTitle, { color: Colors.textSecondary }]}>挖出 </Text>
-              <View style={[styles.promptBlock, { backgroundColor: currentSymbol.blockColor }]}>
-                <Text style={[styles.promptSymbol, pixelShadow]}>{currentSymbol.symbol}</Text>
-              </View>
-            </View>
-          )}
+            )}
+          </View>
+
+          {/* Example-word picture hint */}
+          <View style={styles.hintRow}>
+            <Text style={styles.hintEmoji}>{currentSymbol.emoji}</Text>
+            <Text style={[styles.hintWord, pixelShadow]}>{currentSymbol.exampleWord}</Text>
+          </View>
         </View>
       )}
 
@@ -336,6 +337,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.bgCard,
+  },
+  hintEmoji: {
+    fontSize: 30,
+  },
+  hintWord: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: Colors.textPrimary,
+    letterSpacing: 1,
   },
   promptBlock: {
     width: 52,
