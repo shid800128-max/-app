@@ -6,8 +6,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import * as Speech from 'expo-speech';
 import * as Haptics from 'expo-haptics';
+import { speak as speakChinese } from '../utils/speech';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { BOPOMOFO } from '../data/bopomofo';
@@ -81,7 +81,7 @@ export default function GameScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!isMatchDone && !isMineDone && !isGameOver && currentSymbol) {
       const t = setTimeout(() => {
-        Speech.speak(currentSymbol.symbol, { language: 'zh-TW', rate: 0.65 });
+        speakChinese(currentSymbol.symbol, { rate: 0.5 });
       }, 300);
       return () => clearTimeout(t);
     }
@@ -112,12 +112,10 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // ─── MINE STAGE ────────────────────────────────────────────────
   const [mineBlockStates, setMineBlockStates] = useState<BlockState[]>(['normal', 'normal', 'normal', 'normal']);
-  const [revealedBlocks, setRevealedBlocks] = useState<boolean[]>([false, false, false, false]);
 
   useEffect(() => {
     // Reset mine state on new symbol
     setMineBlockStates(['normal', 'normal', 'normal', 'normal']);
-    setRevealedBlocks([false, false, false, false]);
   }, [state.currentSymbolIdx]);
 
   const handleMineBlockTap = (blockIdx: number) => {
@@ -136,20 +134,20 @@ export default function GameScreen({ navigation, route }: Props) {
       const next = [...mineBlockStates] as BlockState[];
       next[blockIdx] = 'broken';
       setMineBlockStates(next);
-      const rev = [...revealedBlocks];
-      rev[blockIdx] = true;
-      setRevealedBlocks(rev);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } else {
+      // wrong block — shake it, heart already deducted by the hook
       const next = [...mineBlockStates] as BlockState[];
       next[blockIdx] = 'wrong';
       setMineBlockStates(next);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
       feedbackTimer.current.push(
         setTimeout(() => {
-          const reset = [...mineBlockStates] as BlockState[];
-          reset[blockIdx] = 'normal';
-          setMineBlockStates(reset);
+          setMineBlockStates((cur) => {
+            const reset = [...cur] as BlockState[];
+            reset[blockIdx] = 'normal';
+            return reset;
+          });
         }, 600)
       );
     }
@@ -213,11 +211,9 @@ export default function GameScreen({ navigation, route }: Props) {
           />
         ) : (
           <MineGrid
+            distractorIndices={state.distractorSymbolIndices}
             blockStates={mineBlockStates}
-            revealedBlocks={revealedBlocks}
-            correctBlockIdx={state.correctBlockIndex}
-            correctSymbol={currentSymbol?.symbol ?? ''}
-            blockColor={level.colors.blockPrimary}
+            stoneColor={level.colors.blockPrimary}
             onTap={handleMineBlockTap}
           />
         )}
@@ -272,35 +268,34 @@ function MatchGrid({ distractorIndices, correctIdx, blockStates, onTap, levelCol
 }
 
 // ─── MINE GRID ───────────────────────────────────────────────────
+// Each block is a uniform "stone" block carved with one of the 4 candidate
+// symbols. The child mines (taps) the block showing the target symbol.
 type MineGridProps = {
+  distractorIndices: number[];
   blockStates: BlockState[];
-  revealedBlocks: boolean[];
-  correctBlockIdx: number;
-  correctSymbol: string;
-  blockColor: string;
+  stoneColor: string;
   onTap: (blockIdx: number) => void;
 };
 
-function MineGrid({ blockStates, revealedBlocks, correctBlockIdx, correctSymbol, blockColor, onTap }: MineGridProps) {
+function MineGrid({ distractorIndices, blockStates, stoneColor, onTap }: MineGridProps) {
+  const grid = distractorIndices.slice(0, 4);
+
   return (
     <View style={styles.grid}>
-      {[0, 1, 2, 3].map((i) => (
-        <View key={i} style={{ alignItems: 'center' }}>
-          {revealedBlocks[i] ? (
-            <View style={[styles.revealedBlock, { backgroundColor: blockColor }]}>
-              <Text style={[styles.revealedSymbol, pixelShadow]}>{correctSymbol}</Text>
-            </View>
-          ) : (
-            <MinecraftBlock
-              emoji="⛏️"
-              faceColor={blockColor}
-              size="lg"
-              state={blockStates[i]}
-              onPress={() => onTap(i)}
-            />
-          )}
-        </View>
-      ))}
+      {grid.map((bIdx, i) => {
+        const sym = BOPOMOFO[bIdx];
+        if (!sym) return null;
+        return (
+          <MinecraftBlock
+            key={`${bIdx}-${i}`}
+            symbol={sym.symbol}
+            faceColor={stoneColor}
+            size="lg"
+            state={blockStates[i]}
+            onPress={() => onTap(i)}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -393,25 +388,5 @@ const styles = StyleSheet.create({
   steveArea: {
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.lg,
-  },
-  revealedBlock: {
-    width: BlockSizes.lg,
-    height: BlockSizes.lg,
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    borderTopColor: Colors.borderLight,
-    borderLeftColor: Colors.borderLight,
-    borderBottomColor: Colors.borderDark,
-    borderRightColor: Colors.borderDark,
-  },
-  revealedSymbol: {
-    fontSize: 38,
-    fontWeight: '900',
-    color: Colors.textPrimary,
   },
 });

@@ -12,8 +12,7 @@ export type GameState = {
   stage: GameStage;
   // mine stage crack tracking [blockIdx] → 0|1|2|3
   crackLevels: [number, number, number, number];
-  correctBlockIndex: number; // which of the 4 blocks hides the correct answer
-  distractorSymbolIndices: number[]; // indices into BOPOMOFO for the 4 option blocks
+  distractorSymbolIndices: number[]; // indices into BOPOMOFO for the 4 option blocks (match & mine)
 };
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -48,7 +47,6 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
     isPerfect: true,
     stage: initialStage,
     crackLevels: [0, 0, 0, 0],
-    correctBlockIndex: Math.floor(Math.random() * 4),
     distractorSymbolIndices: buildDistractors(level, level.symbolIndices[0]),
   });
 
@@ -93,12 +91,27 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
     [currentBopomofoIdx, symbolCount, reshuffleDistractors]
   );
 
-  // Mine stage: player tapped a block
+  // Mine stage: player tapped a block.
+  // Each block is carved with a symbol (distractorSymbolIndices); the correct
+  // one is the block whose symbol matches the current target. Tapping the
+  // correct block mines it (3 taps → break → advance); a wrong block costs a heart.
   const handleMineTap = useCallback(
-    (blockIndex: number): 'cracked' | 'broken_correct' | 'broken_wrong' => {
-      let result: 'cracked' | 'broken_correct' | 'broken_wrong' = 'cracked';
+    (blockIndex: number): 'cracked' | 'broken_correct' | 'wrong' => {
+      let result: 'cracked' | 'broken_correct' | 'wrong' = 'cracked';
 
       setState((prev) => {
+        const tappedBopomofoIdx = prev.distractorSymbolIndices[blockIndex];
+        const isCorrectBlock = tappedBopomofoIdx === currentBopomofoIdx;
+
+        if (!isCorrectBlock) {
+          result = 'wrong';
+          return {
+            ...prev,
+            hearts: prev.hearts - 1,
+            isPerfect: false,
+          };
+        }
+
         const newCracks = [...prev.crackLevels] as [number, number, number, number];
         newCracks[blockIndex] = Math.min(3, newCracks[blockIndex] + 1);
 
@@ -106,37 +119,22 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
           return { ...prev, crackLevels: newCracks };
         }
 
-        // Block broken
-        const isCorrectBlock = blockIndex === prev.correctBlockIndex;
-        if (isCorrectBlock) {
-          result = 'broken_correct';
-          const next = prev.currentSymbolIdx + 1;
-          const newCorrectBlock = Math.floor(Math.random() * 4);
-          const newDistractors = next < symbolCount ? reshuffleDistractors(next) : [];
-          return {
-            ...prev,
-            xp: Math.min(100, prev.xp + Math.floor(100 / symbolCount)),
-            currentSymbolIdx: next,
-            crackLevels: [0, 0, 0, 0],
-            correctBlockIndex: newCorrectBlock,
-            distractorSymbolIndices: newDistractors,
-          };
-        } else {
-          result = 'broken_wrong';
-          // Respawn the wrong block (reset its crack)
-          newCracks[blockIndex] = 0;
-          return {
-            ...prev,
-            hearts: prev.hearts - 1,
-            isPerfect: false,
-            crackLevels: newCracks,
-          };
-        }
+        // Correct block fully mined → advance to next symbol
+        result = 'broken_correct';
+        const next = prev.currentSymbolIdx + 1;
+        const newDistractors = next < symbolCount ? reshuffleDistractors(next) : [];
+        return {
+          ...prev,
+          xp: Math.min(100, prev.xp + Math.floor(100 / symbolCount)),
+          currentSymbolIdx: next,
+          crackLevels: [0, 0, 0, 0],
+          distractorSymbolIndices: newDistractors,
+        };
       });
 
       return result;
     },
-    [symbolCount, reshuffleDistractors]
+    [currentBopomofoIdx, symbolCount, reshuffleDistractors]
   );
 
   const isMatchDone = state.currentSymbolIdx >= symbolCount && state.stage === 'match';
@@ -149,7 +147,6 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
       stage: 'mine',
       currentSymbolIdx: 0,
       crackLevels: [0, 0, 0, 0],
-      correctBlockIndex: Math.floor(Math.random() * 4),
       distractorSymbolIndices: reshuffleDistractors(0),
     }));
   }, [reshuffleDistractors]);
@@ -157,6 +154,7 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
   return {
     state,
     currentSymbol,
+    currentBopomofoIdx,
     isMatchDone,
     isMineDone,
     isGameOver,

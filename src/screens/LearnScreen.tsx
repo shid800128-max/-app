@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import * as Speech from 'expo-speech';
+import { speak as speakChinese } from '../utils/speech';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { BOPOMOFO } from '../data/bopomofo';
@@ -37,11 +37,7 @@ export default function LearnScreen({ navigation, route }: Props) {
   const isLast = current >= level.symbolIndices.length - 1;
 
   const speak = () => {
-    Speech.speak(symbol.ttsText, {
-      language: 'zh-TW',
-      rate: 0.65,
-      pitch: 1.1,
-    });
+    speakChinese(symbol.ttsText, { rate: 0.5, pitch: 1.1 });
   };
 
   useEffect(() => {
