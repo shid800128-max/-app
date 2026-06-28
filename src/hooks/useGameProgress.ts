@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { LEVELS } from '../data/levels';
 
 export type LevelStatus = 'locked' | 'available' | 'completed' | 'perfect';
@@ -30,68 +30,68 @@ function defaultProgress(): GameProgress {
   return { version: SCHEMA_VERSION, levels, totalDiamonds: 0 };
 }
 
+async function readProgress(): Promise<GameProgress> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as GameProgress) : defaultProgress();
+  } catch {
+    return defaultProgress();
+  }
+}
+
 export function useGameProgress() {
   const [progress, setProgress] = useState<GameProgress | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const pendingUpdate = useRef<((p: GameProgress) => GameProgress) | null>(null);
+
+  // Re-read from storage. Safe to call on focus so each screen reflects the
+  // latest progress saved by another screen (e.g. after completing a level).
+  const reload = useCallback(async () => {
+    const loaded = await readProgress();
+    setProgress(loaded);
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        const loaded: GameProgress = raw ? JSON.parse(raw) : defaultProgress();
-        // Run any pending update that arrived before load finished
-        const final = pendingUpdate.current ? pendingUpdate.current(loaded) : loaded;
-        pendingUpdate.current = null;
-        setProgress(final);
-      } catch {
-        setProgress(defaultProgress());
-      } finally {
-        setIsLoading(false);
-      }
-    })();
-  }, []);
-
-  const save = useCallback(async (next: GameProgress) => {
-    setProgress(next);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // silently ignore storage errors
-    }
-  }, []);
+    reload();
+  }, [reload]);
 
   const completeLevel = useCallback(
     async (levelId: number, heartsRemaining: number, isPerfect: boolean) => {
       const stars = heartsRemaining >= 3 ? 3 : heartsRemaining >= 2 ? 2 : 1;
       const status: LevelStatus = isPerfect ? 'perfect' : 'completed';
 
-      const applyUpdate = (p: GameProgress): GameProgress => {
-        const next = { ...p, levels: { ...p.levels } };
-        const prev = next.levels[levelId] ?? { status: 'available', stars: 0 };
-        next.levels[levelId] = {
-          status: prev.stars >= stars ? prev.status : status,
-          stars: Math.max(prev.stars, stars),
-          completedAt: Date.now(),
-        };
-        if (isPerfect) {
-          next.totalDiamonds = (next.totalDiamonds ?? 0) + 1;
-        }
-        // Unlock next level
-        const nextLevel = LEVELS.find((l) => l.unlockRequirement === levelId);
-        if (nextLevel && next.levels[nextLevel.id]?.status === 'locked') {
-          next.levels[nextLevel.id] = { status: 'available', stars: 0 };
-        }
-        return next;
+      // Read-modify-write against storage so the unlock is always persisted,
+      // regardless of whether this screen's in-memory progress finished loading.
+      const base = await readProgress();
+      const next: GameProgress = { ...base, levels: { ...base.levels } };
+
+      const prev = next.levels[levelId] ?? { status: 'available' as LevelStatus, stars: 0 };
+      const alreadyDone = prev.status === 'completed' || prev.status === 'perfect';
+      next.levels[levelId] = {
+        status: prev.stars >= stars ? prev.status : status,
+        stars: Math.max(prev.stars, stars),
+        completedAt: Date.now(),
       };
 
-      if (!progress) {
-        pendingUpdate.current = applyUpdate;
-        return;
+      // Award a diamond only the first time a level is cleared perfectly.
+      if (isPerfect && !(alreadyDone && prev.status === 'perfect')) {
+        next.totalDiamonds = (next.totalDiamonds ?? 0) + 1;
       }
-      await save(applyUpdate(progress));
+
+      // Unlock the level that requires this one.
+      const nextLevel = LEVELS.find((l) => l.unlockRequirement === levelId);
+      if (nextLevel && next.levels[nextLevel.id]?.status === 'locked') {
+        next.levels[nextLevel.id] = { status: 'available', stars: 0 };
+      }
+
+      try {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore storage errors; in-memory state still updates below
+      }
+      setProgress(next);
     },
-    [progress, save]
+    []
   );
 
   const isLevelUnlocked = useCallback(
@@ -116,8 +116,13 @@ export function useGameProgress() {
 
   const resetAll = useCallback(async () => {
     const fresh = defaultProgress();
-    await save(fresh);
-  }, [save]);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+    } catch {
+      // ignore
+    }
+    setProgress(fresh);
+  }, []);
 
   return {
     progress,
@@ -126,5 +131,6 @@ export function useGameProgress() {
     isLevelUnlocked,
     getLevelProgress,
     resetAll,
+    reload,
   };
 }

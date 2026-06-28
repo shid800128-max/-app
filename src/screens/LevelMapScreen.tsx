@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { LEVELS } from '../data/levels';
 import { Colors } from '../styles/colors';
@@ -23,7 +24,15 @@ const CARD_POSITIONS = [
 ];
 
 export default function LevelMapScreen({ navigation }: Props) {
-  const { getLevelProgress, isLoading } = useGameProgress();
+  const { getLevelProgress, isLoading, reload } = useGameProgress();
+
+  // Refresh progress every time the map regains focus (e.g. returning from a
+  // result screen) so newly unlocked levels show immediately.
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload])
+  );
 
   if (isLoading) {
     return (
