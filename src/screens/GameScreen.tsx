@@ -33,6 +33,7 @@ export default function GameScreen({ navigation, route }: Props) {
     isGameOver,
     handleMatchTap,
     handleMineTap,
+    advanceMineSymbol,
     startMineStage,
   } = useGame(level, stage);
 
@@ -112,13 +113,16 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // ─── MINE STAGE ────────────────────────────────────────────────
   const [mineBlockStates, setMineBlockStates] = useState<BlockState[]>(['normal', 'normal', 'normal', 'normal']);
+  const isAdvancing = useRef(false);
 
   useEffect(() => {
-    // Reset mine state on new symbol
+    // Reset mine state when a new symbol loads
     setMineBlockStates(['normal', 'normal', 'normal', 'normal']);
+    isAdvancing.current = false;
   }, [state.currentSymbolIdx]);
 
   const handleMineBlockTap = (blockIdx: number) => {
+    if (isAdvancing.current) return; // ignore taps while the broken block animates out
     clearFeedback();
     const result = handleMineTap(blockIdx);
 
@@ -131,10 +135,13 @@ export default function GameScreen({ navigation, route }: Props) {
         crackLevel >= 2 ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium
       ).catch(() => {});
     } else if (result === 'broken_correct') {
+      // Play the shatter on the correct block, THEN advance to the next symbol.
+      isAdvancing.current = true;
       const next = [...mineBlockStates] as BlockState[];
       next[blockIdx] = 'broken';
       setMineBlockStates(next);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      feedbackTimer.current.push(setTimeout(() => advanceMineSymbol(), 380));
     } else {
       // wrong block — shake it, heart already deducted by the hook
       const next = [...mineBlockStates] as BlockState[];
@@ -213,7 +220,7 @@ export default function GameScreen({ navigation, route }: Props) {
           <MineGrid
             distractorIndices={state.distractorSymbolIndices}
             blockStates={mineBlockStates}
-            stoneColor={level.colors.blockPrimary}
+            stoneColor={Colors.stone}
             onTap={handleMineBlockTap}
           />
         )}

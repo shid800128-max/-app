@@ -55,6 +55,11 @@ export default function MinecraftBlock({
       ]).start();
     } else if (state === 'broken') {
       Animated.timing(scaleAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    } else {
+      // 'normal' / 'cracked1' / 'cracked2' — ensure the block is fully visible
+      // (restores scale after a prior break/shake so reused blocks never vanish).
+      scaleAnim.setValue(1);
+      shakeAnim.setValue(0);
     }
   }, [state]);
 

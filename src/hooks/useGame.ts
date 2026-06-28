@@ -115,27 +115,31 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
         const newCracks = [...prev.crackLevels] as [number, number, number, number];
         newCracks[blockIndex] = Math.min(3, newCracks[blockIndex] + 1);
 
-        if (newCracks[blockIndex] < 3) {
-          return { ...prev, crackLevels: newCracks };
-        }
-
-        // Correct block fully mined → advance to next symbol
-        result = 'broken_correct';
-        const next = prev.currentSymbolIdx + 1;
-        const newDistractors = next < symbolCount ? reshuffleDistractors(next) : [];
-        return {
-          ...prev,
-          xp: Math.min(100, prev.xp + Math.floor(100 / symbolCount)),
-          currentSymbolIdx: next,
-          crackLevels: [0, 0, 0, 0],
-          distractorSymbolIndices: newDistractors,
-        };
+        // Correct block fully mined. Don't advance here — let the shatter
+        // animation play first; GameScreen calls advanceMineSymbol() afterwards.
+        result = newCracks[blockIndex] >= 3 ? 'broken_correct' : 'cracked';
+        return { ...prev, crackLevels: newCracks };
       });
 
       return result;
     },
-    [currentBopomofoIdx, symbolCount, reshuffleDistractors]
+    [currentBopomofoIdx]
   );
+
+  // Called after the broken-block animation finishes, to move to the next symbol.
+  const advanceMineSymbol = useCallback(() => {
+    setState((prev) => {
+      const next = prev.currentSymbolIdx + 1;
+      const newDistractors = next < symbolCount ? reshuffleDistractors(next) : [];
+      return {
+        ...prev,
+        xp: Math.min(100, prev.xp + Math.floor(100 / symbolCount)),
+        currentSymbolIdx: next,
+        crackLevels: [0, 0, 0, 0],
+        distractorSymbolIndices: newDistractors,
+      };
+    });
+  }, [symbolCount, reshuffleDistractors]);
 
   const isMatchDone = state.currentSymbolIdx >= symbolCount && state.stage === 'match';
   const isMineDone = state.currentSymbolIdx >= symbolCount && state.stage === 'mine';
@@ -160,6 +164,7 @@ export function useGame(level: Level, initialStage: GameStage = 'match') {
     isGameOver,
     handleMatchTap,
     handleMineTap,
+    advanceMineSymbol,
     startMineStage,
   };
 }
